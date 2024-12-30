@@ -1,0 +1,15 @@
+{
+    "name": "template-rust",
+    // https://mcr.microsoft.com/en-us/artifact/mar/devcontainers/rust/tags
+    "image": "mcr.microsoft.com/devcontainers/rust:1.0.20-bookworm",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "rust-lang.rust-analyzer",
+                "GitHub.copilot-chat"
+            ]
+        }
+    },
+    "postCreateCommand": "make install-deps-dev",
+    "remoteUser": "vscode"
+}
