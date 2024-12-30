@@ -8,7 +8,7 @@ DOCKER_IMAGE_NAME ?= template-rust
 DOCKER_COMMAND ?=
 
 # Tools
-TOOLS_DIR ?= $(shell go env GOPATH)/bin
+TOOLS_DIR ?= /usr/local/bin
 # https://github.com/aquasecurity/trivy/releases
 TRIVY_VERSION ?= 0.58.1
 
