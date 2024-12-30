@@ -41,7 +41,7 @@ test: ## run tests
 
 .PHONY: build
 build: ## build applications
-	cargo build
+	cargo build --release
 
 .PHONY: ci-test
 ci-test: install-deps-dev format-check lint test build run ## run CI test
