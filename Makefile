@@ -54,6 +54,10 @@ run: ## run application
 fix: ## fix code
 	cargo fix
 
+.PHONY: update
+update: ## update
+	cargo update
+
 # ---
 # Docker
 # ---
