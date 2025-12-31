@@ -21,6 +21,7 @@ help:
 install-deps-dev: ## install dependencies for development
 	@# https://aquasecurity.github.io/trivy/v0.18.3/installation/#install-script
 	@which trivy || curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b $(TOOLS_DIR) v$(TRIVY_VERSION)
+	@which actionlint || echo "install actionlint https://github.com/rhysd/actionlint"
 
 .PHONY: format-check
 format-check: ## format check
@@ -34,6 +35,7 @@ format: ## format code
 lint: ## lint
 	cargo clippy
 	cargo check
+	actionlint
 
 .PHONY: test
 test: ## run tests
