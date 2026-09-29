@@ -94,8 +94,10 @@ gh secret set DOCKERHUB_TOKEN --body "$DOCKERHUB_TOKEN"
 
 GHCR uses the workflow's `GITHUB_TOKEN`; no extra repository secret is needed.
 Dependabot proposes updates to GitHub Actions, Cargo dependencies, and Docker
-base images. When updating Rust, keep `rust-toolchain.toml` and the Rust
-builder image version in `Dockerfile` aligned. Built-in `cargo test`, rustfmt,
-and Clippy provide the default Rust guardrails; tools such as cargo-nextest and
-cargo-deny can be added when a derived project has enough tests or
-dependencies to justify them.
+base images. Workflow actions use full commit SHAs with release version comments
+to satisfy the repository's Actions policy; keep both aligned when updating
+them. When updating Rust, keep `rust-toolchain.toml` and the Rust builder image
+version in `Dockerfile` aligned. Built-in `cargo test`, rustfmt, and Clippy
+provide the default Rust guardrails; tools such as cargo-nextest and cargo-deny
+can be added when a derived project has enough tests or dependencies to justify
+them.
