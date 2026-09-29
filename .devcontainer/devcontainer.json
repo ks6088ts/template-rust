@@ -1,7 +1,7 @@
 {
     "name": "template-rust",
     // https://mcr.microsoft.com/en-us/artifact/mar/devcontainers/rust/tags
-    "image": "mcr.microsoft.com/devcontainers/rust:1.0.20-bookworm",
+    "image": "mcr.microsoft.com/devcontainers/rust:2.1.1-trixie",
     "customizations": {
         "vscode": {
             "extensions": [
@@ -10,6 +10,6 @@
             ]
         }
     },
-    "postCreateCommand": "make install-deps-dev",
+    "postCreateCommand": "rustup show active-toolchain",
     "remoteUser": "vscode"
 }

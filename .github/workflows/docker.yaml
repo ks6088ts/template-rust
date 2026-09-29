@@ -9,20 +9,24 @@ on:
     branches:
       - "main"
 
+permissions:
+  contents: read
+
 jobs:
   docker:
-    runs-on: "ubuntu-latest"
-    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0 # to retrieve git tags
-      # How to set system path variable in github action workflow: https://stackoverflow.com/a/68214331
-      - name: Add to PATH
-        shell: bash
+      - name: Install Trivy v0.74.0
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "/home/runner/bin" >> "$GITHUB_PATH"
+          gh release download v0.74.0 --repo aquasecurity/trivy \
+            --pattern 'trivy_0.74.0_Linux-64bit.tar.gz' \
+            --output "$RUNNER_TEMP/trivy.tar.gz"
+          printf '%s  %s\n' '2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a' "$RUNNER_TEMP/trivy.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/trivy.tar.gz" -C "$RUNNER_TEMP" trivy
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Run CI tests for Docker
-        shell: bash
-        run: |
-          make ci-test-docker TOOLS_DIR="/home/runner/bin"
+        run: make ci-test-docker
