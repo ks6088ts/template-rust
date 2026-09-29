@@ -1,14 +1,16 @@
-FROM rust:1.94.0-bullseye AS build
+FROM rust:1.98.1-trixie AS build
 
 WORKDIR /usr/src/app
 
 COPY . .
 
-RUN make build
+RUN cargo build --release --locked
 
-FROM debian:bullseye-slim AS deployment
-WORKDIR /usr/local/bin
+FROM debian:trixie-slim AS deployment
+WORKDIR /app
 
 COPY --from=build /usr/src/app/target/release/hello ./app
+
+USER 65534:65534
 
 CMD ["./app"]
