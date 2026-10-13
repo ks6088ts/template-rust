@@ -36,6 +36,10 @@ test: ## run tests
 test-release: ## run tests in release mode
 	cargo test --workspace --all-features --release --locked
 
+.PHONY: doc-check
+doc-check: ## check documentation builds without warnings
+	RUSTDOCFLAGS="$(RUSTDOCFLAGS) -D warnings" cargo doc --workspace --all-features --no-deps --locked
+
 .PHONY: test-msrv
 test-msrv: ## run tests with the minimum supported Rust version
 	cargo +1.85.0 test --workspace --all-features --locked
@@ -45,7 +49,7 @@ build: ## build applications
 	cargo build --workspace --all-features --release --locked
 
 .PHONY: ci-test
-ci-test: format-check lint test test-release build ## run Rust CI checks
+ci-test: format-check lint test test-release doc-check build ## run Rust CI checks
 
 .PHONY: run
 run: ## run application
@@ -91,4 +95,8 @@ docker-scan: ## fail on fixable high/critical Docker image vulnerabilities
 	trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 $(DOCKER_IMAGE)
 
 .PHONY: ci-test-docker
-ci-test-docker: docker-lint docker-build docker-scan docker-run ## run CI test for Docker
+ci-test-docker: ## run CI test for Docker in order, including with parallel make
+	$(MAKE) docker-lint
+	$(MAKE) docker-build
+	$(MAKE) docker-scan
+	$(MAKE) docker-run

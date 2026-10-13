@@ -4,8 +4,16 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 jobs:
+  rust-checks:
+    uses: ./.github/workflows/test.yaml
+  docker-checks:
+    uses: ./.github/workflows/docker.yaml
   ghcr:
+    needs: [rust-checks, docker-checks]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
