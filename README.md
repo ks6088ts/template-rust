@@ -1,9 +1,7 @@
+# template-rust
+
 [![test](https://github.com/ks6088ts/template-rust/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/ks6088ts/template-rust/actions/workflows/test.yaml?query=branch%3Amain)
 [![docker](https://github.com/ks6088ts/template-rust/actions/workflows/docker.yaml/badge.svg?branch=main)](https://github.com/ks6088ts/template-rust/actions/workflows/docker.yaml?query=branch%3Amain)
-[![docker-release](https://github.com/ks6088ts/template-rust/actions/workflows/docker-release.yaml/badge.svg)](https://github.com/ks6088ts/template-rust/actions/workflows/docker-release.yaml)
-[![ghcr-release](https://github.com/ks6088ts/template-rust/actions/workflows/ghcr-release.yaml/badge.svg)](https://github.com/ks6088ts/template-rust/actions/workflows/ghcr-release.yaml)
-
-# template-rust
 
 A dependency-free Rust template with a library, a small executable, and built-in
 tests. Docker development and image publishing are optional.
@@ -29,7 +27,7 @@ cargo run --locked --bin hello
 cargo test --workspace --all-features --locked
 ```
 
-The executable prints `2 + 2 = 4`. Output errors are returned as
+The executable prints `2 + 2 = 4`. Write and flush errors are returned as
 `std::io::Result`, reported on stderr, and cause a nonzero exit instead of a panic.
 The library API is `add(u64, u64) -> u64`; it deliberately panics on overflow in
 both debug and release builds.
@@ -76,14 +74,19 @@ installs a pinned, checksum-verified Trivy release.
 make docker-lint
 make docker-build
 make docker-run
+make docker-test
 make docker-scan
 make ci-test-docker
 ```
 
-`make ci-test-docker` runs lint, build, scan, and execution in that order, stops
+`make ci-test-docker` runs lint, build, scan, and output verification in that order, stops
 on failure, and preserves the order even with `make -j`.
-The multi-stage image runs as a non-root user. Builder and runtime images are
-pinned by version tag and multi-platform digest.
+`make docker-test` checks the sample's output in a read-only container with no
+network, no Linux capabilities, and no privilege escalation. Override
+`DOCKER_EXPECTED_OUTPUT` when replacing the sample application.
+The multi-stage image copies only the Cargo manifests, toolchain configuration,
+and source files into the builder, and runs as a non-root user. Builder and
+runtime images are pinned by version tag and multi-platform digest.
 
 The default local image name is the lowercase checkout directory name, tagged
 with the latest Git tag (without a leading `v`) or the commit ID. Override it
@@ -95,13 +98,16 @@ CLI integration test.
 
 ## Optional image publishing
 
-A pushed `v1.2.3` tag publishes `<docker-user>/<repository>:1.2.3` to Docker
-Hub and `ghcr.io/<owner>/<repository>:1.2.3` to GHCR. Stable releases also
+A pushed `v1.2.3` tag publishes `ghcr.io/<owner>/<repository>:1.2.3` to GHCR
+and, when Docker Hub credentials are configured, `<docker-user>/<repository>:1.2.3`
+to Docker Hub. Stable releases also
 publish `latest`; prereleases such as `v1.2.3-rc.1` retain their suffix and do
-not overwrite `latest`. Both workflows build `linux/amd64` and `linux/arm64`
-images. Both publishing workflows require the Rust and Docker checks to pass
-for the tagged commit before logging in to a registry or publishing.
-Adapt or remove these workflows in repositories that do not publish containers.
+not overwrite `latest`. A single `docker.yaml` workflow handles Docker CI and
+publishing, builds `linux/amd64` and `linux/arm64` images once for both registries,
+and requires the Rust and Docker checks to pass for the tagged commit before
+logging in to a registry or publishing. Container tests and vulnerability scans
+run on the CI runner's native architecture, not on both release architectures.
+Remove the release job and tag trigger if your project does not publish containers.
 
 For Docker Hub, create a repository with the same name as your GitHub repository
 and [an access token](https://app.docker.com/settings/personal-access-tokens/create),
@@ -113,7 +119,10 @@ gh secret set DOCKERHUB_TOKEN --body "$DOCKERHUB_TOKEN"
 ```
 
 GHCR uses the workflow's `GITHUB_TOKEN`; no extra repository secret is needed.
-The two registries remain independent; GHCR does not need Docker Hub credentials.
+Leave both Docker Hub secrets unset for GHCR-only publishing. Setting only one
+secret is a configuration error; a failed publish to either registry fails the
+shared release job. Publishing to two registries is not atomic, so a registry
+failure may leave the other registry already updated.
 
 ## Reusing and maintaining the template
 
@@ -121,7 +130,8 @@ The two registries remain independent; GHCR does not need Docker Hub credentials
   registry configuration for your project.
 - Replace the example API and executable together with their tests. If you
   rename `hello`, update `Dockerfile` and `CARGO_BIN_EXE_hello` in the integration
-  test.
+  test. Update `DOCKER_EXPECTED_OUTPUT` and the container test's restrictions as
+  needed for the replacement application.
 - Keep `Cargo.lock` tracked. Build and test commands use `--locked`.
 - Dependabot proposes GitHub Actions, Cargo, and Docker version/digest updates.
   When updating Rust, keep `rust-toolchain.toml`, the Rust builder version and

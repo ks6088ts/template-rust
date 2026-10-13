@@ -4,6 +4,7 @@ DOCKER_REPO_NAME ?=
 DOCKER_IMAGE_NAME ?= $(shell basename "$(CURDIR)" | tr '[:upper:]' '[:lower:]')
 DOCKER_IMAGE ?= $(if $(DOCKER_REPO_NAME),$(DOCKER_REPO_NAME)/)$(DOCKER_IMAGE_NAME):$(GIT_TAG)
 DOCKER_COMMAND ?=
+DOCKER_EXPECTED_OUTPUT ?= 2 + 2 = 4
 HADOLINT_VERSION ?= 2.15.1
 
 .PHONY: help
@@ -70,12 +71,21 @@ update: ## update
 .PHONY: docker-build
 docker-build: ## build Docker image
 	docker build \
-		-t $(DOCKER_IMAGE) \
+		-t "$(DOCKER_IMAGE)" \
 		.
 
 .PHONY: docker-run
 docker-run: ## run Docker container
-	docker run --rm $(DOCKER_IMAGE) $(DOCKER_COMMAND)
+	docker run --rm "$(DOCKER_IMAGE)" $(DOCKER_COMMAND)
+
+.PHONY: docker-test
+docker-test: ## check container output with restricted runtime permissions
+	@output=$$(docker run --rm --network none --read-only --cap-drop ALL \
+		--security-opt no-new-privileges "$(DOCKER_IMAGE)") || exit $$?; \
+	if [ "$$output" != "$(DOCKER_EXPECTED_OUTPUT)" ]; then \
+		printf 'Unexpected container output: %s\n' "$$output" >&2; \
+		exit 1; \
+	fi
 
 .PHONY: docker-lint
 docker-lint: ## lint Dockerfile
@@ -92,11 +102,11 @@ docker-lint: ## lint Dockerfile
 .PHONY: docker-scan
 docker-scan: ## fail on fixable high/critical Docker image vulnerabilities
 	@command -v trivy >/dev/null 2>&1 || { echo "trivy is required: https://trivy.dev/latest/getting-started/installation/" >&2; exit 1; }
-	trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 $(DOCKER_IMAGE)
+	trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$(DOCKER_IMAGE)"
 
 .PHONY: ci-test-docker
 ci-test-docker: ## run CI test for Docker in order, including with parallel make
 	$(MAKE) docker-lint
 	$(MAKE) docker-build
 	$(MAKE) docker-scan
-	$(MAKE) docker-run
+	$(MAKE) docker-test

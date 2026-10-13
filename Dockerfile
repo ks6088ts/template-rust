@@ -2,9 +2,10 @@ FROM rust:1.99.0-trixie@sha256:81015672d6939b0265f09adf96d5de125482bb13301060769
 
 WORKDIR /usr/src/app
 
-COPY . .
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY src ./src
 
-RUN cargo build --release --locked
+RUN cargo build --release --locked --bin hello
 
 FROM debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f AS deployment
 WORKDIR /app
