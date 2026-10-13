@@ -1,33 +1,45 @@
-[![test](https://github.com/ks6088ts/template-rust/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/ks6088ts/template-rust/actions/workflows/test.yaml?query=branch%3Amain)
-[![docker](https://github.com/ks6088ts/template-rust/actions/workflows/docker.yaml/badge.svg?branch=main)](https://github.com/ks6088ts/template-rust/actions/workflows/docker.yaml?query=branch%3Amain)
-[![docker-release](https://github.com/ks6088ts/template-rust/actions/workflows/docker-release.yaml/badge.svg)](https://github.com/ks6088ts/template-rust/actions/workflows/docker-release.yaml)
-[![ghcr-release](https://github.com/ks6088ts/template-rust/actions/workflows/ghcr-release.yaml/badge.svg)](https://github.com/ks6088ts/template-rust/actions/workflows/ghcr-release.yaml)
-
 # template-rust
 
-A dependency-free Rust template with a library, a small executable, and checks
-for Rust, GitHub Actions, and Docker.
+[![test](https://github.com/ks6088ts/template-rust/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/ks6088ts/template-rust/actions/workflows/test.yaml?query=branch%3Amain)
+[![docker](https://github.com/ks6088ts/template-rust/actions/workflows/docker.yaml/badge.svg?branch=main)](https://github.com/ks6088ts/template-rust/actions/workflows/docker.yaml?query=branch%3Amain)
+
+A dependency-free Rust template with a library, a small executable, and built-in
+tests. Docker development and image publishing are optional.
 
 ## Prerequisites
 
-- [rustup](https://rustup.rs/) (installs the Rust 1.98.1 toolchain and its
+- [rustup](https://rustup.rs/) (installs the Rust 1.99.0 toolchain and its
   rustfmt/Clippy components from `rust-toolchain.toml`)
-- [GNU Make](https://www.gnu.org/software/make/)
+- [GNU Make](https://www.gnu.org/software/make/) for the convenience targets;
+  Cargo commands can also be run directly, including on Windows
 
 The crate uses Rust edition 2024 and supports Rust 1.85.0 or newer (MSRV).
-Normal development and CI use the pinned 1.98.1 toolchain; `make test-msrv`
+Normal development and CI use the pinned 1.99.0 toolchain; `make test-msrv`
 checks the minimum version separately. A global `RUSTUP_TOOLCHAIN` override
 takes precedence over the repository's toolchain file.
 
 ## Local development
 
-Use the Makefile targets from the repository root:
+Start from the repository root:
+
+```shell
+cargo run --locked --bin hello
+cargo test --workspace --all-features --locked
+```
+
+The executable prints `2 + 2 = 4`. Write and flush errors are returned as
+`std::io::Result`, reported on stderr, and cause a nonzero exit instead of a panic.
+The library API is `add(u64, u64) -> u64`; it deliberately panics on overflow in
+both debug and release builds.
+
+Use the Makefile targets for the complete checks:
 
 ```shell
 make format-check
 make lint
 make test
 make test-release
+make doc-check
 rustup toolchain install 1.85.0 --profile minimal
 make test-msrv
 make build
@@ -37,18 +49,18 @@ make ci-test
 
 `make ci-test` runs formatting, warning-free Clippy on all Rust targets and
 features, debug and release tests (including CLI integration tests and
-doctests), and a locked release build. `make format` formats Rust files.
+doctests), warning-free documentation builds, and a locked release build.
+CI runs these checks on Linux, adds Cargo tests on macOS and Windows, and tests
+the MSRV separately. `make format` formats Rust files.
 `make lint-workflows` additionally checks GitHub Actions files when
 [actionlint](https://github.com/rhysd/actionlint#installation) is installed;
 CI installs a pinned, checksum-verified actionlint release. No extra Cargo
-dependencies or test runner are needed for this small example.
+dependencies or test runner are needed.
 
-The example API remains `add(u64, u64) -> u64`, and `hello` prints
-`2 + 2 = 4`. Overflow now panics in both debug and release builds.
 `Cargo.lock` is committed because this template includes an executable;
 builds and tests use `--locked`.
 
-## Docker development
+## Optional Docker development
 
 [Docker](https://docs.docker.com/get-docker/) is needed for image builds and
 execution. `make docker-lint` uses the pinned
@@ -62,9 +74,19 @@ installs a pinned, checksum-verified Trivy release.
 make docker-lint
 make docker-build
 make docker-run
+make docker-test
 make docker-scan
 make ci-test-docker
 ```
+
+`make ci-test-docker` runs lint, build, scan, and output verification in that order, stops
+on failure, and preserves the order even with `make -j`.
+`make docker-test` checks the sample's output in a read-only container with no
+network, no Linux capabilities, and no privilege escalation. Override
+`DOCKER_EXPECTED_OUTPUT` when replacing the sample application.
+The multi-stage image copies only the Cargo manifests, toolchain configuration,
+and source files into the builder, and runs as a non-root user. Builder and
+runtime images are pinned by version tag and multi-platform digest.
 
 The default local image name is the lowercase checkout directory name, tagged
 with the latest Git tag (without a leading `v`) or the commit ID. Override it
@@ -74,14 +96,18 @@ if needed, for example:
 the `hello` binary, also update the executable path in `Dockerfile` and the
 CLI integration test.
 
-## Publishing images
+## Optional image publishing
 
-A pushed `v1.2.3` tag publishes `<docker-user>/<repository>:1.2.3` to Docker
-Hub and `ghcr.io/<owner>/<repository>:1.2.3` to GHCR. Stable releases also
+A pushed `v1.2.3` tag publishes `ghcr.io/<owner>/<repository>:1.2.3` to GHCR
+and, when Docker Hub credentials are configured, `<docker-user>/<repository>:1.2.3`
+to Docker Hub. Stable releases also
 publish `latest`; prereleases such as `v1.2.3-rc.1` retain their suffix and do
-not overwrite `latest`. Both workflows build `linux/amd64` and `linux/arm64`
-images. Adapt or remove these workflows in repositories that do not publish
-containers.
+not overwrite `latest`. A single `docker.yaml` workflow handles Docker CI and
+publishing, builds `linux/amd64` and `linux/arm64` images once for both registries,
+and requires the Rust and Docker checks to pass for the tagged commit before
+logging in to a registry or publishing. Container tests and vulnerability scans
+run on the CI runner's native architecture, not on both release architectures.
+Remove the release job and tag trigger if your project does not publish containers.
 
 For Docker Hub, create a repository with the same name as your GitHub repository
 and [an access token](https://app.docker.com/settings/personal-access-tokens/create),
@@ -93,11 +119,25 @@ gh secret set DOCKERHUB_TOKEN --body "$DOCKERHUB_TOKEN"
 ```
 
 GHCR uses the workflow's `GITHUB_TOKEN`; no extra repository secret is needed.
-Dependabot proposes updates to GitHub Actions, Cargo dependencies, and Docker
-base images. Workflow actions use full commit SHAs with release version comments
-to satisfy the repository's Actions policy; keep both aligned when updating
-them. When updating Rust, keep `rust-toolchain.toml` and the Rust builder image
-version in `Dockerfile` aligned. Built-in `cargo test`, rustfmt, and Clippy
-provide the default Rust guardrails; tools such as cargo-nextest and cargo-deny
-can be added when a derived project has enough tests or dependencies to justify
-them.
+Leave both Docker Hub secrets unset for GHCR-only publishing. Setting only one
+secret is a configuration error; a failed publish to either registry fails the
+shared release job. Publishing to two registries is not atomic, so a registry
+failure may leave the other registry already updated.
+
+## Reusing and maintaining the template
+
+- Update the package name, version, description, license, README links, and
+  registry configuration for your project.
+- Replace the example API and executable together with their tests. If you
+  rename `hello`, update `Dockerfile` and `CARGO_BIN_EXE_hello` in the integration
+  test. Update `DOCKER_EXPECTED_OUTPUT` and the container test's restrictions as
+  needed for the replacement application.
+- Keep `Cargo.lock` tracked. Build and test commands use `--locked`.
+- Dependabot proposes GitHub Actions, Cargo, and Docker version/digest updates.
+  When updating Rust, keep `rust-toolchain.toml`, the Rust builder version and
+  digest in `Dockerfile`, and this README aligned. Dependabot's Docker updates
+  do not update the toolchain file automatically.
+- Keep Actions commit SHAs and their version comments aligned, and verify
+  download checksums when updating actionlint or Trivy.
+- Add dependencies and tooling only when the derived project needs them;
+  standard Cargo tests, rustfmt, and Clippy are the default guardrails.

@@ -3,5 +3,7 @@ name = "template-rust"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
+description = "A dependency-free Rust template with a library and executable."
+license = "MIT"
 
 [dependencies]

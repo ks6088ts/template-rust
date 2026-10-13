@@ -22,6 +22,8 @@ mod tests {
         assert_eq!(add(2, 2), 4);
         assert_eq!(add(0, 0), 0);
         assert_eq!(add(u64::MAX, 0), u64::MAX);
+        assert_eq!(add(0, u64::MAX), u64::MAX);
+        assert_eq!(add(u64::MAX - 1, 1), u64::MAX);
     }
 
     #[test]
