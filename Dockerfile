@@ -15,7 +15,8 @@ FROM gcr.io/distroless/cc-debian13:nonroot@sha256:cc66d222f0a7ec996b78a99fe76a96
 
 COPY --from=build /out/template-rust /usr/local/bin/template-rust
 
-USER nonroot:nonroot
+# Numeric IDs of distroless `nonroot`, so runtimes can verify a non-root user.
+USER 65532:65532
 
 ENTRYPOINT ["/usr/local/bin/template-rust"]
 CMD ["--help"]
