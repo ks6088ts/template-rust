@@ -1,21 +1,76 @@
-# Template notes
+# Design notes
 
-The toolchain is pinned in [`rust-toolchain.toml`](../rust-toolchain.toml);
-[`Cargo.toml`](../Cargo.toml) declares the Rust 2024 edition and MSRV. The
-[README](../README.md) explains the development commands, OS support, error
-contracts, optional Docker tooling, and registry credentials.
-Its [reuse checklist](../README.md#reusing-and-maintaining-the-template) covers
-renaming the example and maintaining toolchain versions and image digests.
+This page records the decisions behind the template so that derived projects
+can tell which parts are deliberate and which are examples.
 
-The library stays independent of I/O. The executable uses standard-library
-writers and propagates output errors without an additional error-handling crate.
-`make ci-test` includes documentation checks; image publishing requires the
-Rust and Docker checks to pass for the tagged commit.
+## Application structure
+
+- **Thin binary, testable library.** `src/main.rs` only parses arguments,
+  initializes logging, and maps errors to exit codes. All behavior lives in
+  the library and writes to an injected `impl Write`, so unit tests do not
+  need to spawn processes. `tests/cli.rs` covers the process boundary: exit
+  codes, stdout and stderr separation, and environment variables.
+- **Errors.** The library exposes a `#[non_exhaustive]` `thiserror` enum, so
+  callers can match on failures. The binary wraps the enum in `anyhow` to add
+  context and print the full cause chain (`{:#}`) on stderr.
+- **Exit codes.** Exit code 0 means success, 1 a runtime error, and 2 a usage
+  error (clap's convention). A `BrokenPipe` error is treated as success because
+  the downstream reader has stopped. Rust ignores `SIGPIPE`, so without this
+  check `template-rust ... | head` would report an error.
+- **Output channels.** stdout carries only command output, and logs go to
+  stderr through `tracing`. `-v`/`-q` select the level, and `RUST_LOG`
+  overrides them for fine-grained filtering.
+- **clap_complete writes in memory.** clap_complete panics on write errors, so
+  the completion script is rendered into a buffer first, and I/O errors surface
+  as regular errors.
+
+## Quality gates
+
+- `[lints]` in `Cargo.toml` applies the same rules everywhere:
+  `unsafe_code = "forbid"`, `missing_docs`, Clippy `pedantic`, and a ban on
+  `unwrap`, `dbg!`, and `print!` outside tests. `clippy.toml` relaxes these
+  rules for tests.
+- Every gate runs from a `make` target, and CI calls the same targets, so local
+  and CI results match.
+- Security scanning runs on a schedule as well as on changes, because new
+  advisories appear without code changes.
+
+## Choosing stable components
+
+- Only widely adopted crates with conservative MSRVs are used. The pinned
+  toolchain is the latest stable patch release, and the MSRV (1.85, the first
+  release with edition 2024) is tested separately. Cargo's MSRV-aware resolver
+  keeps `Cargo.lock` compatible with it.
+- Dependabot waits 7 days before proposing new releases, which leaves time for
+  regressions and compromised releases to be caught upstream.
+- Actions are pinned to commit SHAs and base images to digests. Tools are
+  installed with checksum verification (`taiki-e/install-action`, or an
+  explicit `sha256sum` for actionlint) instead of `curl | sh`.
+- Same-repository reusable workflows use the `./` form rather than the newer
+  `$/` syntax until actionlint and GitHub Enterprise Server support it.
+
+## Release design
+
+- release-plz (`git_only`) owns versioning and the changelog through release
+  PRs, so nobody has to tag releases by hand.
+- Tags created with `GITHUB_TOKEN` do not trigger other workflows. The
+  release-plz workflow therefore calls `release.yaml` and `docker.yaml`
+  directly, and all publishing goes through this one path. The release job
+  runs only after the CI workflow passes for the same commit.
+- The release workflows do not use caches (zizmor `cache-poisoning`). Binaries
+  get a `SHA256SUMS` file and a build provenance attestation. Images get
+  BuildKit SBOM and provenance plus a GitHub attestation pushed to GHCR.
+- Multi-arch images are built under QEMU for simplicity. If build time becomes
+  a problem, build each platform on a native runner and merge the manifests.
 
 ## References
 
 - [The Cargo Book > Package Layout](https://doc.rust-lang.org/cargo/guide/project-layout.html)
-- [Rust Edition Guide > Rust 2024](https://doc.rust-lang.org/edition-guide/rust-2024/index.html)
-- [The rustup book > Overrides](https://rust-lang.github.io/rustup/overrides.html)
-- [The Rust standard library > Write](https://doc.rust-lang.org/std/io/trait.Write.html)
+- [The Cargo Book > `[lints]`](https://doc.rust-lang.org/cargo/reference/manifest.html#the-lints-section)
+- [Command Line Applications in Rust](https://rust-cli.github.io/book/)
+- [clap derive tutorial](https://docs.rs/clap/latest/clap/_derive/_tutorial/index.html)
+- [cargo-deny](https://embarkstudios.github.io/cargo-deny/)
+- [release-plz](https://release-plz.dev/docs)
+- [zizmor audits](https://docs.zizmor.sh/audits/)
+- [GitHub > Artifact attestations](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations)
 - [Docker > Multi-platform image with GitHub Actions](https://docs.docker.com/build/ci/github-actions/multi-platform/)

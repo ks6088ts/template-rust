@@ -1,0 +1,6 @@
+# zizmor configuration: https://docs.zizmor.sh/configuration/
+rules:
+  # The `$/` self-repository syntax is not yet supported by actionlint or GHES;
+  # keep the widely supported `./` form for same-repository reusable workflows.
+  self-repository:
+    disable: true

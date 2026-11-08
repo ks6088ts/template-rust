@@ -1,68 +1,143 @@
+# ---
+# Settings
+# ---
+
+MSRV ?= $(shell sed -n 's/^rust-version *= *"\(.*\)"/\1/p' Cargo.toml)
+CARGO_FLAGS ?= --workspace --all-features --locked
+NEXTEST_PROFILE ?= default
+COVERAGE_MIN_LINES ?= 80
+ARGS ?= --help
+# Online audits need GH_TOKEN; CI clears this flag.
+ZIZMOR_FLAGS ?= --offline
+
+# Tool versions. Keep in sync with `.github/workflows/*.yaml`.
+CARGO_DENY_VERSION ?= 0.20.2
+CARGO_LLVM_COV_VERSION ?= 0.9.1
+CARGO_MACHETE_VERSION ?= 0.9.2
+CARGO_NEXTEST_VERSION ?= 0.9.151
+TYPOS_VERSION ?= 1.52.0
+ZIZMOR_VERSION ?= 1.32.0
+HADOLINT_VERSION ?= 2.15.1
+
 # Git and Docker
 GIT_TAG ?= $(shell git describe --tags --abbrev=0 --always | sed 's/^v//')
 DOCKER_REPO_NAME ?=
 DOCKER_IMAGE_NAME ?= $(shell basename "$(CURDIR)" | tr '[:upper:]' '[:lower:]')
 DOCKER_IMAGE ?= $(if $(DOCKER_REPO_NAME),$(DOCKER_REPO_NAME)/)$(DOCKER_IMAGE_NAME):$(GIT_TAG)
-DOCKER_COMMAND ?=
-DOCKER_EXPECTED_OUTPUT ?= 2 + 2 = 4
-HADOLINT_VERSION ?= 2.15.1
+DOCKER_COMMAND ?= greet
+DOCKER_EXPECTED_OUTPUT ?= Hello, World!
+DOCKER_RUN_FLAGS ?= --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges
 
 .PHONY: help
 help:
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 .DEFAULT_GOAL := help
 
-.PHONY: format-check
-format-check: ## format check
-	cargo fmt --all -- --check
+# ---
+# Development
+# ---
+
+.PHONY: install-tools
+install-tools: ## install pinned Cargo-based development tools
+	cargo install --locked \
+		cargo-deny@$(CARGO_DENY_VERSION) \
+		cargo-llvm-cov@$(CARGO_LLVM_COV_VERSION) \
+		cargo-machete@$(CARGO_MACHETE_VERSION) \
+		cargo-nextest@$(CARGO_NEXTEST_VERSION) \
+		typos-cli@$(TYPOS_VERSION) \
+		zizmor@$(ZIZMOR_VERSION)
+
+.PHONY: run
+run: ## run the CLI (override arguments with ARGS="greet --name Rust")
+	cargo run --locked -- $(ARGS)
+
+.PHONY: build
+build: ## build release binary
+	cargo build $(CARGO_FLAGS) --release
 
 .PHONY: format
 format: ## format code
 	cargo fmt --all
 
-.PHONY: lint
-lint: ## lint all Rust targets and fail on warnings
-	cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-
-.PHONY: lint-workflows
-lint-workflows: ## lint GitHub Actions workflows (requires actionlint)
-	@command -v actionlint >/dev/null 2>&1 || { echo "actionlint is required: https://github.com/rhysd/actionlint#installation" >&2; exit 1; }
-	actionlint
-
-.PHONY: test
-test: ## run tests
-	cargo test --workspace --all-features --locked
-
-.PHONY: test-release
-test-release: ## run tests in release mode
-	cargo test --workspace --all-features --release --locked
-
-.PHONY: doc-check
-doc-check: ## check documentation builds without warnings
-	RUSTDOCFLAGS="$(RUSTDOCFLAGS) -D warnings" cargo doc --workspace --all-features --no-deps --locked
-
-.PHONY: test-msrv
-test-msrv: ## run tests with the minimum supported Rust version
-	cargo +1.85.0 test --workspace --all-features --locked
-
-.PHONY: build
-build: ## build applications
-	cargo build --workspace --all-features --release --locked
-
-.PHONY: ci-test
-ci-test: format-check lint test test-release doc-check build ## run Rust CI checks
-
-.PHONY: run
-run: ## run application
-	cargo run --locked
-
 .PHONY: fix
-fix: ## fix code
-	cargo fix
+fix: ## apply compiler and Clippy suggestions
+	cargo clippy $(CARGO_FLAGS) --all-targets --fix --allow-dirty --allow-staged
+	cargo fmt --all
 
 .PHONY: update
-update: ## update
+update: ## update dependencies within Cargo.toml constraints
 	cargo update
+
+# ---
+# Static analysis
+# ---
+
+.PHONY: format-check
+format-check: ## check formatting
+	cargo fmt --all -- --check
+
+.PHONY: lint
+lint: ## run Clippy on all targets and fail on warnings
+	cargo clippy $(CARGO_FLAGS) --all-targets -- -D warnings
+
+.PHONY: doc-check
+doc-check: ## build documentation and fail on warnings
+	RUSTDOCFLAGS="$(RUSTDOCFLAGS) -D warnings" cargo doc $(CARGO_FLAGS) --no-deps
+
+.PHONY: spell
+spell: ## check spelling (requires typos)
+	typos
+
+.PHONY: machete
+machete: ## detect unused dependencies (requires cargo-machete)
+	cargo machete
+
+.PHONY: deny
+deny: ## check advisories, licenses, bans, and sources (requires cargo-deny)
+	cargo deny --locked check
+
+.PHONY: lint-workflows
+lint-workflows: ## lint GitHub Actions workflows (requires actionlint and zizmor)
+	actionlint
+	zizmor $(ZIZMOR_FLAGS) .github
+
+.PHONY: scan-fs
+scan-fs: ## scan the repository for vulnerabilities, secrets, and misconfigurations (requires trivy)
+	trivy fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --ignore-unfixed \
+		--skip-dirs target --exit-code 1 .
+
+.PHONY: check
+check: format-check lint doc-check spell machete deny ## run all static checks
+
+# ---
+# Tests
+# ---
+
+.PHONY: test
+test: ## run unit, integration, and doc tests (requires cargo-nextest)
+	cargo nextest run $(CARGO_FLAGS) --profile $(NEXTEST_PROFILE)
+	cargo test $(CARGO_FLAGS) --doc
+
+.PHONY: install-msrv
+install-msrv: ## install the minimum supported Rust toolchain from Cargo.toml
+	rustup toolchain install $(MSRV) --profile minimal
+
+.PHONY: test-msrv
+test-msrv: ## run tests with the minimum supported Rust version from Cargo.toml
+	cargo +$(MSRV) test $(CARGO_FLAGS)
+
+.PHONY: coverage
+coverage: ## measure line coverage and write lcov.info (requires cargo-llvm-cov)
+	cargo llvm-cov nextest $(CARGO_FLAGS) --profile $(NEXTEST_PROFILE) \
+		--lcov --output-path lcov.info --fail-under-lines $(COVERAGE_MIN_LINES)
+	cargo llvm-cov report --summary-only
+
+.PHONY: coverage-html
+coverage-html: ## open an HTML coverage report (requires cargo-llvm-cov)
+	cargo llvm-cov nextest $(CARGO_FLAGS) --open
+
+.PHONY: ci-test
+ci-test: check test build ## run all Rust CI checks
 
 # ---
 # Docker
@@ -70,18 +145,16 @@ update: ## update
 
 .PHONY: docker-build
 docker-build: ## build Docker image
-	docker build \
-		-t "$(DOCKER_IMAGE)" \
-		.
+	docker build -t "$(DOCKER_IMAGE)" .
 
 .PHONY: docker-run
-docker-run: ## run Docker container
-	docker run --rm "$(DOCKER_IMAGE)" $(DOCKER_COMMAND)
+docker-run: ## run Docker container (override arguments with DOCKER_COMMAND)
+	docker run $(DOCKER_RUN_FLAGS) "$(DOCKER_IMAGE)" $(DOCKER_COMMAND)
 
 .PHONY: docker-test
-docker-test: ## check container output with restricted runtime permissions
-	@output=$$(docker run --rm --network none --read-only --cap-drop ALL \
-		--security-opt no-new-privileges "$(DOCKER_IMAGE)") || exit $$?; \
+docker-test: ## verify the image runs with restricted runtime permissions
+	docker run $(DOCKER_RUN_FLAGS) "$(DOCKER_IMAGE)" --version
+	@output=$$(docker run $(DOCKER_RUN_FLAGS) "$(DOCKER_IMAGE)" $(DOCKER_COMMAND)) || exit $$?; \
 	if [ "$$output" != "$(DOCKER_EXPECTED_OUTPUT)" ]; then \
 		printf 'Unexpected container output: %s\n' "$$output" >&2; \
 		exit 1; \
@@ -100,12 +173,11 @@ docker-lint: ## lint Dockerfile
 	fi
 
 .PHONY: docker-scan
-docker-scan: ## fail on fixable high/critical Docker image vulnerabilities
-	@command -v trivy >/dev/null 2>&1 || { echo "trivy is required: https://trivy.dev/latest/getting-started/installation/" >&2; exit 1; }
+docker-scan: ## fail on fixable HIGH/CRITICAL image vulnerabilities (requires trivy)
 	trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$(DOCKER_IMAGE)"
 
 .PHONY: ci-test-docker
-ci-test-docker: ## run CI test for Docker in order, including with parallel make
+ci-test-docker: ## run Docker CI checks in order, even with parallel make
 	$(MAKE) docker-lint
 	$(MAKE) docker-build
 	$(MAKE) docker-scan

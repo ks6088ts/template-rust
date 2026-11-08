@@ -1,0 +1,26 @@
+# cargo-deny configuration: https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+all-features = true
+
+[advisories]
+# Fail on vulnerabilities and unmaintained/unsound crates in the dependency graph.
+yanked = "deny"
+# Add `{ id = "RUSTSEC-YYYY-NNNN", reason = "..." }` entries only with a justification.
+ignore = []
+
+[licenses]
+# Licenses currently in the dependency graph. Extend deliberately (for example
+# with "BSD-3-Clause" or "ISC") when new dependencies require it.
+allow = ["Apache-2.0", "MIT", "Unicode-3.0"]
+confidence-threshold = 0.93
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

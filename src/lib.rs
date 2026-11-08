@@ -1,34 +1,30 @@
-/// Adds two `u64` values.
-///
-/// # Examples
-///
-/// ```
-/// assert_eq!(template_rust::add(2, 2), 4);
-/// ```
-///
-/// # Panics
-///
-/// Panics if the sum exceeds `u64::MAX`.
-pub fn add(left: u64, right: u64) -> u64 {
-    left.checked_add(right).expect("u64 addition overflowed")
-}
+//! Library crate behind the `template-rust` command-line interface.
+//!
+//! The binary in `src/main.rs` only parses arguments, initializes logging, and
+//! maps errors to exit codes. Everything else lives here so it can be unit
+//! tested without spawning a process.
 
-#[cfg(test)]
-mod tests {
-    use super::add;
+pub mod cli;
+pub mod commands;
+pub mod error;
+pub mod logging;
 
-    #[test]
-    fn adds_values() {
-        assert_eq!(add(2, 2), 4);
-        assert_eq!(add(0, 0), 0);
-        assert_eq!(add(u64::MAX, 0), u64::MAX);
-        assert_eq!(add(0, u64::MAX), u64::MAX);
-        assert_eq!(add(u64::MAX - 1, 1), u64::MAX);
+use std::io::Write;
+
+pub use error::{Error, Result};
+
+use cli::{Cli, Command};
+
+/// Runs the subcommand selected in `cli`, writing its output to `out`.
+///
+/// # Errors
+///
+/// Returns an error if the command fails or if writing to `out` fails.
+pub fn run(cli: &Cli, out: &mut impl Write) -> Result<()> {
+    match &cli.command {
+        Command::Greet(args) => commands::greet::run(args, out)?,
+        Command::Completions(args) => commands::completions::run(args, out)?,
     }
-
-    #[test]
-    #[should_panic(expected = "u64 addition overflowed")]
-    fn panics_on_overflow() {
-        add(u64::MAX, 1);
-    }
+    out.flush()?;
+    Ok(())
 }

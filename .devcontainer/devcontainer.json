@@ -2,14 +2,20 @@
     "name": "template-rust",
     // https://mcr.microsoft.com/en-us/artifact/mar/devcontainers/rust/tags
     "image": "mcr.microsoft.com/devcontainers/rust:2.1.1-trixie",
+    "features": {
+        "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+    },
     "customizations": {
         "vscode": {
             "extensions": [
                 "rust-lang.rust-analyzer",
+                "tamasfe.even-better-toml",
+                "vadimcn.vscode-lldb",
+                "GitHub.vscode-github-actions",
                 "GitHub.copilot-chat"
             ]
         }
     },
-    "postCreateCommand": "rustup show active-toolchain",
+    "postCreateCommand": "rustup toolchain install && make install-tools",
     "remoteUser": "vscode"
 }

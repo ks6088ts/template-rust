@@ -11,3 +11,8 @@ target/
 # Local environment files
 .env
 .env.*
+
+# Coverage and test reports
+lcov.info
+*.profraw
+junit.xml
