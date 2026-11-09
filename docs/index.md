@@ -52,12 +52,14 @@ can tell which parts are deliberate and which are examples.
 ## Release design
 
 - Releases are started by pushing a `vX.Y.Z` tag, the convention used by most
-  Rust CLIs (and tools such as cargo-dist and GoReleaser). Humans own the
-  version: it is bumped in `Cargo.toml` through a reviewed pull request, and
-  `make release-tag` tags exactly that version on an up-to-date `main`.
-- The workflow does not trust the tag. It requires a SemVer name, the same
-  version as `Cargo.toml`, and a commit reachable from `main`, so CI does not
-  need to run again and a stray tag on a feature branch cannot be released.
+  Rust CLIs (and tools such as cargo-dist and GoReleaser). The tag is the
+  single source of truth for the version: release builds write it into
+  `Cargo.toml` and `Cargo.lock` before compiling, so releasing needs no
+  version-bump commit and the binary, image, and release always agree.
+  The committed `Cargo.toml` version only affects local builds.
+- The workflow does not trust the tag blindly. It requires a SemVer name and a
+  commit reachable from `main`, so CI does not need to run again and a stray
+  tag on a feature branch cannot be released.
   `workflow_dispatch` with an existing tag re-runs a failed release.
 - Assets are uploaded to a draft release that is published last. Published
   releases may be immutable, and users never see a release with missing
