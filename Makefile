@@ -3,6 +3,7 @@
 # ---
 
 MSRV ?= $(shell sed -n 's/^rust-version *= *"\(.*\)"/\1/p' Cargo.toml)
+CARGO_VERSION ?= $(shell sed -n 's/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -n 1)
 CARGO_FLAGS ?= --workspace --all-features --locked
 NEXTEST_PROFILE ?= default
 COVERAGE_MIN_LINES ?= 80
@@ -21,6 +22,8 @@ HADOLINT_VERSION ?= 2.15.1
 
 # Git and Docker
 GIT_TAG ?= $(shell git describe --tags --abbrev=0 --always | sed 's/^v//')
+RELEASE_REMOTE ?= origin
+RELEASE_BRANCH ?= main
 DOCKER_REPO_NAME ?=
 DOCKER_IMAGE_NAME ?= $(shell basename "$(CURDIR)" | tr '[:upper:]' '[:lower:]')
 DOCKER_IMAGE ?= $(if $(DOCKER_REPO_NAME),$(DOCKER_REPO_NAME)/)$(DOCKER_IMAGE_NAME):$(GIT_TAG)
@@ -182,3 +185,29 @@ ci-test-docker: ## run Docker CI checks in order, even with parallel make
 	$(MAKE) docker-build
 	$(MAKE) docker-scan
 	$(MAKE) docker-test
+
+# ---
+# Release
+# ---
+
+.PHONY: release-tag
+release-tag: ## tag the Cargo.toml version on an up-to-date main and push it to start a release
+	@set -eu; \
+	tag="v$(CARGO_VERSION)"; \
+	branch=$$(git rev-parse --abbrev-ref HEAD); \
+	if [ "$$branch" != "$(RELEASE_BRANCH)" ]; then \
+		echo "Switch to $(RELEASE_BRANCH) first (current branch: $$branch)." >&2; exit 1; \
+	fi; \
+	if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Commit or stash local changes first." >&2; exit 1; \
+	fi; \
+	git fetch --quiet --tags $(RELEASE_REMOTE); \
+	if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse $(RELEASE_REMOTE)/$(RELEASE_BRANCH))" ]; then \
+		echo "Local $(RELEASE_BRANCH) differs from $(RELEASE_REMOTE)/$(RELEASE_BRANCH); pull or push first." >&2; exit 1; \
+	fi; \
+	if git rev-parse --quiet --verify "refs/tags/$$tag" >/dev/null; then \
+		echo "Tag $$tag already exists; bump the version in Cargo.toml first." >&2; exit 1; \
+	fi; \
+	git tag --annotate "$$tag" --message "$$tag"; \
+	git push $(RELEASE_REMOTE) "$$tag"; \
+	echo "Pushed $$tag; follow the release workflow in GitHub Actions."

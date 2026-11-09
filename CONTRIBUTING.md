@@ -22,15 +22,23 @@ make ci-test-docker  # when changing Dockerfile or runtime behavior
 
 ## Commit messages
 
-Use [Conventional Commits](https://www.conventionalcommits.org/). release-plz
-derives the next version and the changelog from them:
+Use [Conventional Commits](https://www.conventionalcommits.org/). Pull requests
+are squash-merged, so the pull request title must follow the same format.
+Release notes are generated from pull request titles and grouped by label (see
+`.github/release.yml`), so label each pull request (`enhancement`, `bug`,
+`documentation`, `breaking-change`, ...).
 
-| Prefix | Effect |
+## Releasing
+
+Maintainers choose the next version with [Semantic Versioning](https://semver.org/):
+
+| Changes since the last release | Version bump |
 | --- | --- |
-| `feat:` | minor version bump (patch while `0.x`), listed under Added |
-| `fix:` | patch version bump, listed under Fixed |
-| `feat!:` or `BREAKING CHANGE:` footer | major version bump (minor while `0.x`) |
-| `docs:`, `refactor:`, `test:`, `ci:`, `chore:` | can trigger a patch-release PR when packaged files change |
+| `feat!:` or `BREAKING CHANGE:` footer | major (minor while `0.x`) |
+| `feat:` | minor (patch while `0.x`) |
+| only `fix:` and other changes | patch |
 
-Pull requests are squash-merged, so the pull request title must follow the
-same format.
+1. Bump `version` in `Cargo.toml`, run `cargo check` to update `Cargo.lock`,
+   and merge the change through a pull request (e.g. `chore: release v1.2.3`).
+2. On the updated `main`, run `make release-tag`. The pushed tag starts the
+   release workflow, which publishes binaries, images, and the GitHub release.

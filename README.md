@@ -20,7 +20,7 @@ day one.
 | Vulnerability and license scanning | [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) (RustSec, licenses, sources), [Trivy](https://trivy.dev/) (repository and image), dependency review, Dependabot, [OpenSSF Scorecard](https://scorecard.dev/) |
 | Tests | unit, doc, and CLI tests ([assert_cmd](https://docs.rs/assert_cmd)) run by [cargo-nextest](https://nexte.st/) on Linux, macOS, and Windows, MSRV tests, coverage with [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) |
 | Container | multi-stage build, distroless `cc-debian13:nonroot` runtime, digest-pinned bases, multi-arch, SBOM and provenance |
-| Release | [release-plz](https://release-plz.dev/) release PRs and changelog, binaries for 5 targets with SHA-256 checksums and build provenance attestations, images on GHCR (and optionally Docker Hub) |
+| Release | tag-triggered releases with generated notes, binaries for 5 targets with SHA-256 checksums and build provenance attestations, images on GHCR (and optionally Docker Hub) |
 
 ## Quick start
 
@@ -114,6 +114,7 @@ the Cargo-based tools, and it gives access to the host's Docker.
 | `make lint-workflows` | actionlint and zizmor on `.github/` |
 | `make scan-fs` | Trivy scan of the repository (vulnerabilities, secrets, misconfigurations) |
 | `make ci-test-docker` | hadolint, image build, Trivy image scan, restricted runtime test |
+| `make release-tag` | tag the `Cargo.toml` version on an up-to-date `main` and push the tag |
 
 All builds use `--locked`, and `Cargo.lock` is committed because this is an
 application.
@@ -150,8 +151,7 @@ docker run --rm ghcr.io/ks6088ts/template-rust:latest greet
 | [`dependency-review.yaml`](.github/workflows/dependency-review.yaml) | PRs | blocks newly added vulnerable dependencies |
 | [`scorecard.yaml`](.github/workflows/scorecard.yaml) | push, weekly | OpenSSF Scorecard |
 | [`docker.yaml`](.github/workflows/docker.yaml) | push, PRs, called on release | image lint, build, scan, and test; on release, multi-arch push with SBOM and provenance |
-| [`release-plz.yaml`](.github/workflows/release-plz.yaml) | push to `main` | CI gate, release PR, tag and GitHub release, then binaries and images |
-| [`release.yaml`](.github/workflows/release.yaml) | called on release | builds and uploads release binaries, checksums, and attestations |
+| [`release.yaml`](.github/workflows/release.yaml) | push of a `vX.Y.Z` tag, manual | validates the tag, builds binaries, publishes images, then publishes the GitHub release with checksums and attestations |
 
 All workflows default to `permissions: {}` and grant the minimum per job. They
 pin every action to a full commit SHA, check out code without persisting
@@ -159,33 +159,38 @@ credentials, and pass zizmor's audits.
 
 ### Release flow
 
-1. Merge pull requests with [Conventional Commit](https://www.conventionalcommits.org/)
-   titles into `main`.
-2. `release-plz` opens or updates a **release PR** that bumps the version in
-   `Cargo.toml` and updates `CHANGELOG.md`.
-3. Merge the release PR. After CI passes on `main`, release-plz creates the
-   `vX.Y.Z` tag and the GitHub release, then calls:
-   - `release.yaml`, which attaches archives for `x86_64`/`aarch64` Linux (glibc),
-     `x86_64`/`aarch64` macOS, and `x86_64` Windows, plus `SHA256SUMS` and a
-     build provenance attestation.
-   - `docker.yaml`, which pushes `linux/amd64` and `linux/arm64` images to
-     `ghcr.io/<owner>/<repo>:X.Y.Z` (and Docker Hub when configured). Stable
-     versions also get the `latest` tag. Prereleases such as `1.2.3-rc.1` do
-     not.
+1. Open a pull request that bumps `version` in `Cargo.toml` (and `Cargo.lock`
+   via `cargo check`), and merge it into `main` after CI passes.
+2. On the updated `main`, run `make release-tag`. It creates an annotated
+   `vX.Y.Z` tag for the `Cargo.toml` version and pushes it.
+3. The tag push starts `release.yaml`:
+   - `prepare` rejects tags that are not SemVer, do not match `Cargo.toml`, or
+     point to a commit outside `main` (so only commits that passed the required
+     checks on `main` are released). Tags with a suffix such as `v1.2.3-rc.1`
+     become prereleases.
+   - `build` creates archives for `x86_64`/`aarch64` Linux (glibc),
+     `x86_64`/`aarch64` macOS, and `x86_64` Windows, and runs `--version` on
+     the binaries the runner can execute.
+   - `docker` calls `docker.yaml`, which pushes `linux/amd64` and `linux/arm64`
+     images to `ghcr.io/<owner>/<repo>:X.Y.Z` (and Docker Hub when configured).
+     Stable versions also get the `latest` tag. Prereleases do not.
+   - `publish` adds `SHA256SUMS` and a build provenance attestation, uploads
+     everything to a **draft** release with
+     [generated release notes](https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes)
+     (categorized by pull request label in [`.github/release.yml`](.github/release.yml)),
+     and publishes it only after all assets are attached.
 
-Versions come from Git tags (`git_only = true`); nothing is published to
-crates.io. Verify downloads with `sha256sum -c SHA256SUMS` and
-`gh attestation verify <file> --repo <owner>/<repo>`.
+If a run fails, fix the cause and re-run the failed jobs, or start the workflow
+manually with the same tag (**Actions → release → Run workflow**). A leftover
+draft is reused. A published release is never modified; release a new version
+instead. Nothing is published to crates.io. Verify downloads with
+`sha256sum -c SHA256SUMS` and `gh attestation verify <file> --repo <owner>/<repo>`.
 
 ### Repository settings
 
-- **Settings → Actions → General**: enable *Allow GitHub Actions to create and
-  approve pull requests* so release-plz can open release PRs.
-- Optional `RELEASE_PLZ_TOKEN` secret (a fine-grained PAT or GitHub App token
-  with contents and pull request write access). Pull requests and tags created
-  with the default `GITHUB_TOKEN` do not trigger other workflows, so without
-  this secret CI does not run on the release PR itself. The release is still
-  gated on CI on `main`.
+- Recommended: a tag ruleset for `refs/tags/v*` that restricts creation to
+  maintainers and blocks updates and deletion, so release tags cannot be moved.
+  Also enable [immutable releases](https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/immutable-releases).
 - Optional Docker Hub publishing: create a repository named after the GitHub
   repository and [an access token](https://app.docker.com/settings/personal-access-tokens/create),
   then set both secrets:
@@ -200,7 +205,8 @@ crates.io. Verify downloads with `sha256sum -c SHA256SUMS` and
 - Recommended: protect `main` and require the job checks from the `ci`,
   `security`, `codeql`, and `docker` workflows. Select their actual job/matrix
   check names in the branch rule, not the workflow names. Use squash merges
-  so pull request titles become the Conventional Commit messages.
+  so pull request titles become the Conventional Commit messages, and label
+  pull requests so the generated release notes are grouped.
 - CodeQL and Scorecard upload SARIF to code scanning, which private
   repositories need GitHub Advanced Security for.
 
@@ -216,7 +222,7 @@ crates.io. Verify downloads with `sha256sum -c SHA256SUMS` and
    without `--locked` to refresh the renamed package entry in `Cargo.lock`.
 2. Replace the `greet` command with your own commands and tests, and update
    `DOCKER_COMMAND`/`DOCKER_EXPECTED_OUTPUT` in the `Makefile`.
-3. Reset `CHANGELOG.md` and the version (`0.1.0`).
+3. Reset the version in `Cargo.toml` (`0.1.0`).
 4. Apply the repository settings above.
 
 ## Maintenance
