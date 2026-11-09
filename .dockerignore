@@ -1,6 +1,6 @@
-.git
-/target
-.env
-.env.*
-**/.env
-**/.env.*
+# Allowlist: only files needed to build the binary enter the build context.
+*
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!src/
