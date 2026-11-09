@@ -197,9 +197,10 @@ crates.io. Verify downloads with `sha256sum -c SHA256SUMS` and
 
   Setting only one of them fails the release. Publishing to two registries is
   not atomic.
-- Recommended: protect `main` and require the `ci`, `security`, `codeql`, and
-  `docker` checks. Use squash merges so pull request titles become the
-  Conventional Commit messages.
+- Recommended: protect `main` and require the job checks from the `ci`,
+  `security`, `codeql`, and `docker` workflows. Select their actual job/matrix
+  check names in the branch rule, not the workflow names. Use squash merges
+  so pull request titles become the Conventional Commit messages.
 - CodeQL and Scorecard upload SARIF to code scanning, which private
   repositories need GitHub Advanced Security for.
 
