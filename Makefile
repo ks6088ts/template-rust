@@ -3,7 +3,9 @@
 # ---
 
 MSRV ?= $(shell sed -n 's/^rust-version *= *"\(.*\)"/\1/p' Cargo.toml)
-CARGO_VERSION ?= $(shell sed -n 's/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -n 1)
+# Release version without the `v` prefix, e.g. `make release-tag VERSION=1.2.3`.
+VERSION ?=
+SEMVER_REGEX := ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$$
 CARGO_FLAGS ?= --workspace --all-features --locked
 NEXTEST_PROFILE ?= default
 COVERAGE_MIN_LINES ?= 80
@@ -190,10 +192,20 @@ ci-test-docker: ## run Docker CI checks in order, even with parallel make
 # Release
 # ---
 
+.PHONY: check-version
+check-version:
+	@if ! printf '%s\n' "$(VERSION)" | grep -Eq '$(SEMVER_REGEX)'; then \
+		echo "Set VERSION to a SemVer version without 'v', e.g. VERSION=1.2.3 or VERSION=1.2.3-rc.1." >&2; exit 1; \
+	fi
+
+.PHONY: set-version
+set-version: check-version ## write VERSION into Cargo.toml and Cargo.lock (used by release builds)
+	bash scripts/set-version.sh "$(VERSION)"
+
 .PHONY: release-tag
-release-tag: ## tag the Cargo.toml version on an up-to-date main and push it to start a release
+release-tag: check-version ## push tag vVERSION from an up-to-date main to start a release (VERSION=1.2.3)
 	@set -eu; \
-	tag="v$(CARGO_VERSION)"; \
+	tag="v$(VERSION)"; \
 	branch=$$(git rev-parse --abbrev-ref HEAD); \
 	if [ "$$branch" != "$(RELEASE_BRANCH)" ]; then \
 		echo "Switch to $(RELEASE_BRANCH) first (current branch: $$branch)." >&2; exit 1; \
@@ -206,7 +218,7 @@ release-tag: ## tag the Cargo.toml version on an up-to-date main and push it to 
 		echo "Local $(RELEASE_BRANCH) differs from $(RELEASE_REMOTE)/$(RELEASE_BRANCH); pull or push first." >&2; exit 1; \
 	fi; \
 	if git rev-parse --quiet --verify "refs/tags/$$tag" >/dev/null; then \
-		echo "Tag $$tag already exists; bump the version in Cargo.toml first." >&2; exit 1; \
+		echo "Tag $$tag already exists; choose a new VERSION." >&2; exit 1; \
 	fi; \
 	git tag --annotate "$$tag" --message "$$tag"; \
 	git push $(RELEASE_REMOTE) "$$tag"; \

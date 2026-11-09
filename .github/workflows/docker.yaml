@@ -35,6 +35,11 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
           persist-credentials: false
+      - name: Set the version from the tag
+        if: ${{ inputs.tag != '' }}
+        env:
+          TAG: ${{ inputs.tag }}
+        run: bash scripts/set-version.sh "${TAG#v}"
       - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: trivy@0.76.2
@@ -58,6 +63,10 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
           persist-credentials: false
+      - name: Set the version from the tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: bash scripts/set-version.sh "${TAG#v}"
       - name: Validate Docker Hub credentials
         env:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

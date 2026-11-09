@@ -38,7 +38,7 @@ Maintainers choose the next version with [Semantic Versioning](https://semver.or
 | `feat:` | minor (patch while `0.x`) |
 | only `fix:` and other changes | patch |
 
-1. Bump `version` in `Cargo.toml`, run `cargo check` to update `Cargo.lock`,
-   and merge the change through a pull request (e.g. `chore: release v1.2.3`).
-2. On the updated `main`, run `make release-tag`. The pushed tag starts the
-   release workflow, which publishes binaries, images, and the GitHub release.
+On the updated `main`, run `make release-tag VERSION=X.Y.Z`. The pushed
+`vX.Y.Z` tag starts the release workflow, which writes the version into the
+build and publishes binaries, images, and the GitHub release. No
+version-bump commit is needed.
