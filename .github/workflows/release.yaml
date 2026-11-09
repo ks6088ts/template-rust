@@ -1,21 +1,78 @@
 name: release
 
 on:
-  workflow_call:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+  workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag (for example v1.2.3) to build binaries for.
+        description: Existing release tag (for example v1.2.3) to build and publish again.
         required: true
         type: string
 
 permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 env:
   BIN_NAME: template-rust
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Rejects tags that do not match Cargo.toml or point outside the default branch,
+  # so only commits that passed the required CI checks on `main` are released.
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      - name: Validate tag name
+        id: tag
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$'
+          if [[ ! "$TAG" =~ $semver ]]; then
+            echo "::error::'$TAG' is not a release tag such as v1.2.3 or v1.2.3-rc.1."
+            exit 1
+          fi
+          {
+            echo "tag=$TAG"
+            echo "version=${TAG#v}"
+            echo "prerelease=$([[ "$TAG" == *-* ]] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify Cargo.toml version and default branch
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          VERSION: ${{ steps.tag.outputs.version }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          cargo_version=$(sed -n 's/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          if [[ "$cargo_version" != "$VERSION" ]]; then
+            echo "::error::Tag $TAG does not match the Cargo.toml version ($cargo_version)."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor HEAD "origin/$DEFAULT_BRANCH"; then
+            echo "::error::Tag $TAG points to a commit that is not on $DEFAULT_BRANCH."
+            exit 1
+          fi
+
   build:
+    needs: prepare
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     permissions:
@@ -35,7 +92,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag }}
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
           persist-credentials: false
       - name: Install Rust toolchain from rust-toolchain.toml
         env:
@@ -47,14 +104,28 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: cargo build --release --locked --target "$TARGET" --bin "$BIN_NAME"
+      - name: Smoke test
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          if [[ "$(rustc -vV | sed -n 's/^host: //p')" != "$TARGET" ]]; then
+            echo "Skipping: $TARGET cannot run on this runner."
+            exit 0
+          fi
+          output=$("target/$TARGET/release/$BIN_NAME" --version)
+          if [[ "$output" != "$BIN_NAME $VERSION" ]]; then
+            echo "::error::Unexpected --version output: $output"
+            exit 1
+          fi
       - name: Package
         env:
           TARGET: ${{ matrix.target }}
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           name="${BIN_NAME}-${TAG}-${TARGET}"
           mkdir -p "staging/$name" dist
-          cp README.md LICENSE CHANGELOG.md "staging/$name/"
+          cp README.md LICENSE "staging/$name/"
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             cp "target/$TARGET/release/$BIN_NAME.exe" "staging/$name/"
             (cd staging && 7z a -tzip "../dist/$name.zip" "$name" >/dev/null)
@@ -68,8 +139,25 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  docker:
+    needs: [prepare, build]
+    uses: ./.github/workflows/docker.yaml
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  # Assets are uploaded to a draft that is published last: published releases
+  # are immutable when immutable releases are enabled, and users never see a
+  # release with missing assets.
   publish:
-    needs: build
+    needs: [prepare, build, docker]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -89,8 +177,26 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: dist/SHA256SUMS
-      - name: Upload release assets
+      - name: Create or update the draft release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.tag }}
-        run: gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+          TAG: ${{ needs.prepare.outputs.tag }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          if ! is_draft=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null); then
+            flags=(--draft --verify-tag --generate-notes --title "$TAG")
+            if [[ "$PRERELEASE" == "true" ]]; then
+              flags+=(--prerelease)
+            fi
+            gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" "${flags[@]}"
+          elif [[ "$is_draft" == "true" ]]; then
+            gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            echo "::error::Release $TAG is already published. Release a new version instead."
+            exit 1
+          fi
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false --repo "$GITHUB_REPOSITORY"

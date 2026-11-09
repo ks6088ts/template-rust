@@ -5,14 +5,12 @@ on:
     branches:
       - "main"
   pull_request:
-  workflow_call:
   workflow_dispatch:
 
 permissions: {}
 
 concurrency:
-  # The suffix keeps the group unique when another workflow calls this one.
-  group: ${{ github.workflow }}-ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
