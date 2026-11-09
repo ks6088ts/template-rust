@@ -30,7 +30,7 @@ derives the next version and the changelog from them:
 | `feat:` | minor version bump (patch while `0.x`), listed under Added |
 | `fix:` | patch version bump, listed under Fixed |
 | `feat!:` or `BREAKING CHANGE:` footer | major version bump (minor while `0.x`) |
-| `docs:`, `refactor:`, `test:`, `ci:`, `chore:` | no release on their own |
+| `docs:`, `refactor:`, `test:`, `ci:`, `chore:` | can trigger a patch-release PR when packaged files change |
 
 Pull requests are squash-merged, so the pull request title must follow the
 same format.
