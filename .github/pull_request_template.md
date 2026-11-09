@@ -7,4 +7,4 @@
 - [ ] The title follows [Conventional Commits](https://www.conventionalcommits.org/) (e.g. `feat: add --json output`).
 - [ ] `make ci-test` passes locally.
 - [ ] Tests cover the change.
-- [ ] Documentation (README, `--help` text) is updated if behavior changed.
+- [ ] Documentation (README, `docs/`, `--help` text) is updated if behavior changed.
