@@ -207,11 +207,13 @@ crates.io. Verify downloads with `sha256sum -c SHA256SUMS` and
 ## Using this template
 
 1. Rename the package in `Cargo.toml` (`name`, `description`, `repository`,
-   `keywords`, `categories`). Then update `BIN_NAME` in
-   [`release.yaml`](.github/workflows/release.yaml), the binary path in
-   [`Dockerfile`](Dockerfile), the `TEMPLATE_RUST_NAME` variable in `src/cli.rs`,
-   and the names in this README, `SECURITY.md`, `CODEOWNERS`, and the issue
-   templates.
+   `keywords`, `categories`). Update the `template_rust` crate references in
+   `src/main.rs` and doctests, the command name and `TEMPLATE_RUST_NAME` variable
+   in `src/cli.rs`, and the binary-name assertions in the unit and CLI tests.
+   Then update `BIN_NAME` in [`release.yaml`](.github/workflows/release.yaml),
+   the binary path in [`Dockerfile`](Dockerfile), and the names in this README,
+   `SECURITY.md`, `CODEOWNERS`, and the issue templates. Run `cargo check`
+   without `--locked` to refresh the renamed package entry in `Cargo.lock`.
 2. Replace the `greet` command with your own commands and tests, and update
    `DOCKER_COMMAND`/`DOCKER_EXPECTED_OUTPUT` in the `Makefile`.
 3. Reset `CHANGELOG.md` and the version (`0.1.0`).
